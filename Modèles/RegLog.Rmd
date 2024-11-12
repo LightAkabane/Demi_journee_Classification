@@ -1,0 +1,204 @@
+---
+title: "Classification regression logistique"
+author: "Niyonkuru Berline"
+date: '2023-2024'
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+---
+title: "La régression logistique"
+output: html_document
+date: "2024-2025"
+---
+  Ce document analyse un modèle de classification binaire visant à prédire la probabilité de défaillance d'une entreprise. Nous testerons plusieurs modèles (Régression Logistique, SVM, Régression Linéaire) et évaluerons leurs performances avec la métrique AUC.
+*** 
+```{r dplyr}
+#("dplyr")
+#install.packages("ggplot2")
+#install.packages("ROCR")
+library(dplyr)
+library(ggplot2)
+library(ROCR)
+
+```
+
+# Chargement de données
+```{r data}
+# Remplacez par le chemin d'accès si nécessaire
+data <- read.csv("./farms_train.csv", sep = ";", header = TRUE)
+dim(data)
+head(data)
+glimpse(data)
+```
+
+## Transformation des variables
+
+```{r}
+# Convertir `diff` en facteur (variable cible) pour classification binaire
+data <- data %>% mutate(DIFF = as.factor(DIFF))
+# Transformer d'autres colonnes si nécessaire en tant que variables catégorielles
+glimpse(data)
+
+```
+
+
+# Analyse exploratoire
+## Boxplot de diff par Variables Numériques
+
+```{r}
+ggplot(data, aes(x = DIFF, y = R2, fill = DIFF)) + geom_boxplot() + labs(title = "Boxplot de Var1 par DIFF")
+ggplot(data, aes(x = DIFF, y = R7, fill = DIFF)) + geom_boxplot() + labs(title = "Boxplot de Var2 par DIFF")
+
+```
+
+# Modèle logistique
+```{r}
+data_clean <- na.omit(data)
+
+fit_logistic <- glm(DIFF ~ R2 + R7 + R8 + R17+ R22 +R32, family = "binomial", data = data)
+summary(fit_logistic)
+
+```
+
+# Prédictions et matrice de confusion
+Observons maintenant la loi de la variable acid.
+
+```{r}
+predictions <- predict(fit_logistic, type = "response")
+seuil <- 0.5
+predictions_01 <- as.numeric(predictions > seuil)
+table(predictions_01, data$DIFF)
+
+```
+
+# Variation du seuil et matrice de confusion 
+```{r}
+# Assurez-vous que 'predictions' contient des probabilités (non des log-odds)
+# Par exemple, si vous utilisez un modèle glm:
+# predictions <- predict(modele, type = "response")
+
+seuils <- seq(0, 1, length.out = 9)  # Définir une séquence de seuils
+for (i in seuils) {
+  # Convertir les probabilités en classes (0 ou 1) en utilisant le seuil
+  predictions_01 <- as.numeric(predictions > i)
+  
+  # Afficher le seuil et la table de confusion
+  print(paste("Seuil:", round(i, 2)))
+  print(table(predictions_01, data$DIFF))
+  
+  # Vous pouvez ajouter des métriques comme la précision, le rappel, etc.
+  accuracy <- sum(predictions_01 == data$DIFF) / length(data$DIFF)
+  print(paste("Précision (accuracy) à seuil", round(i, 2), ":", round(accuracy, 3)))
+  
+  # Optionnellement, afficher d'autres métriques comme le F1-score
+  tp <- sum(predictions_01 == 1 & data$DIFF == 1)  # Vrai positif
+  fp <- sum(predictions_01 == 1 & data$DIFF == 0)  # Faux positif
+  fn <- sum(predictions_01 == 0 & data$DIFF == 1)  # Faux négatif
+  precision <- tp / (tp + fp)  # Précision
+  recall <- tp / (tp + fn)     # Rappel
+  f1_score <- 2 * (precision * recall) / (precision + recall)  # F1-score
+  
+  print(paste("Précision à seuil", round(i, 2), ":", round(precision, 3)))
+  print(paste("Rappel à seuil", round(i, 2), ":", round(recall, 3)))
+  print(paste("F1-score à seuil", round(i, 2), ":", round(f1_score, 3)))
+}
+
+
+```
+
+# Courbe ROC et AUC
+```{r}
+pred <- prediction(predictions, data$DIFF)
+perf <- performance(pred, "tpr", "fpr")
+plot(perf, col="blue", main="Courbe ROC")
+ROC_auc <- performance(pred, "auc")
+AUC <- ROC_auc@y.values[[1]]
+print(paste("AUC:", AUC))
+
+```
+
+# Validation croisée
+```{r}
+# Charger les packages nécessaires
+library(caret)    # Pour la validation croisée
+library(dplyr)    # Pour manipuler les données
+
+# Préparer le jeu de données (si ce n'est pas déjà fait)
+data$DIFF <- as.factor(data$DIFF)  # S'assurer que la variable cible est factorielle
+
+# Définir la formule du modèle
+formula <- DIFF ~ R2 + R7 + R8 + R17 + R22 + R32
+
+# Définir les paramètres de la validation croisée en k-fold (par exemple, k = 10)
+train_control <- trainControl(method = "cv", number = 10)
+
+# Entraîner le modèle en utilisant la validation croisée
+model <- train(
+  formula,
+  data = data,
+  method = "glm",
+  family = "binomial",
+  trControl = train_control
+)
+
+# Afficher les résultats de la validation croisée
+print(model)
+
+# Afficher la précision moyenne
+cat("Précision moyenne (Accuracy) : ", mean(model$resamples$Accuracy), "\n")
+
+# Afficher la précision, le rappel et le F1-score moyens (si calculés)
+cat("Précision moyenne : ", mean(model$resamples$Precision), "\n")
+cat("Rappel moyen : ", mean(model$resamples$Recall), "\n")
+cat("F1-score moyen : ", mean(model$resamples$F1), "\n")
+
+```
+
+Autre
+```{r}
+library(caret)
+library(dplyr)
+
+# Fonction pour calculer Precision, Recall, et F1-score
+custom_summary <- function(data, lev = NULL, model = NULL) {
+  precision <- posPredValue(data$pred, data$obs, positive = lev[2])
+  recall <- sensitivity(data$pred, data$obs, positive = lev[2])
+  f1 <- (2 * precision * recall) / (precision + recall)
+  accuracy <- sum(data$pred == data$obs) / nrow(data)
+  
+  out <- c(Accuracy = accuracy, Precision = precision, Recall = recall, F1 = f1)
+  return(out)
+}
+
+# Définir la validation croisée avec la fonction personnalisée
+train_control <- trainControl(
+  method = "cv", 
+  number = 10, 
+  summaryFunction = custom_summary,
+  classProbs = TRUE
+)
+
+# Entraîner le modèle
+model <- train(
+  DIFF ~ R2 + R7 + R8 + R17 + R22 + R32,
+  data = data,
+  method = "glm",
+  family = "binomial",
+  trControl = train_control
+)
+
+# Afficher les résultats de la validation croisée
+print(model)
+
+# Afficher les métriques
+cat("Précision moyenne (Accuracy) : ", mean(model$resamples$Accuracy), "\n")
+cat("Précision moyenne : ", mean(model$resamples$Precision, na.rm = TRUE), "\n")
+cat("Rappel moyen : ", mean(model$resamples$Recall, na.rm = TRUE), "\n")
+cat("F1-score moyen : ", mean(model$resamples$F1, na.rm = TRUE), "\n")
+
+```
+
