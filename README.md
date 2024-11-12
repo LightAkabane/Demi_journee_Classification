@@ -7,7 +7,7 @@ Ce dépôt Git est structuré comme suit :
     src/ : Code source du projet, incluant les fonctions de traitement des données, de modélisation et d'évaluation.
     README.md : Documentation du projet (ce fichier).
 
-#Membres du groupe:
+# Membres du groupe:
     -BENOSMANE Yacine
     -CHIRANE Rania
     -INGABIRE Alvin
