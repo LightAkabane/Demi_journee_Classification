@@ -1,0 +1,216 @@
+---
+title: "Classification regression logistique"
+author: "Niyonkuru Berline"
+date: '2023-2024'
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+---
+title: "La régression logistique"
+output: html_document
+date: "2024-2025"
+---
+  Ce document analyse un modèle de classification binaire visant à prédire la probabilité de défaillance d'une entreprise. Nous testerons plusieurs modèles (Régression Logistique, SVM, Régression Linéaire) et évaluerons leurs performances avec la métrique AUC.
+*** 
+```{r dplyr}
+#("dplyr")
+#install.packages("ggplot2")
+#install.packages("ROCR")
+library(dplyr)
+library(ggplot2)
+library(ROCR)
+
+```
+
+# Chargement de données
+```{r data}
+# Remplacez par le chemin d'accès si nécessaire
+data <- read.csv("../data/farms_train.csv", sep = ";", header = TRUE)
+dim(data)
+head(data)
+glimpse(data)
+```
+
+## Transformation des variables
+
+```{r}
+# Convertir `diff` en facteur (variable cible) pour classification binaire
+data <- data %>% mutate(DIFF = as.factor(DIFF))
+# Transformer d'autres colonnes si nécessaire en tant que variables catégorielles
+glimpse(data)
+
+```
+
+
+# Analyse exploratoire
+## Boxplot de diff par Variables Numériques
+
+```{r}
+ggplot(data, aes(x = DIFF, y = R2, fill = DIFF)) + geom_boxplot() + labs(title = "Boxplot de Var1 par DIFF")
+ggplot(data, aes(x = DIFF, y = R7, fill = DIFF)) + geom_boxplot() + labs(title = "Boxplot de Var2 par DIFF")
+
+```
+
+# Modèle logistique
+```{r}
+data_clean <- na.omit(data)
+
+fit_logistic <- glm(DIFF ~ R2 + R7 + R8 + R17+ R22 +R32, family = "binomial", data = data)
+summary(fit_logistic)
+
+```
+
+# Prédictions et matrice de confusion
+Observons maintenant la loi de la variable acid.
+
+```{r}
+predictions <- predict(fit_logistic, type = "response")
+seuil <- 0.5
+predictions_01 <- as.numeric(predictions > seuil)
+table(predictions_01, data$diff)
+
+```
+
+# Variation du seuil et matrice de confusion 
+```{r}
+seuils <- seq(0, 1, length.out = 9)
+for(i in seuils) {
+  predictions_01 <- as.numeric(predictions > i)
+  print(paste("Seuil:", i))
+  print(table(predictions_01, data$diff))
+}
+
+```
+
+# Courbe ROC et AUC
+```{r}
+pred <- prediction(predictions, data$diff)
+perf <- performance(pred, "tpr", "fpr")
+plot(perf, col="blue", main="Courbe ROC")
+ROC_auc <- performance(pred, "auc")
+AUC <- ROC_auc@y.values[[1]]
+print(paste("AUC:", AUC))
+
+```
+
+**4) ** Qu'en concluez-vous ? 
+Le lien entre `log(acid)` et `lymph` est toujours fort.
+
+## Variables explicatives qualitatives
+
+Pour chaque variable qualitative, 
+
+(1) Construisons la distribution empirique jointe à la variable cible.
+```{r distribution jointe lymph x radio}
+table(prostate$lymph,prostate$radio)
+```
+
+(2) Etudions leur lien avec la variable cible (`lymph`) à l'aide d'un test du chi deux d’indépendance. 
+```{r chi deux (lymph, radio)}
+chisq.test(prostate$lymph,prostate$radio)
+```
+
+
+
+```{r, var qualitative taille}
+table(prostate$lymph,prostate$taille)
+chisq.test(prostate$lymph,prostate$taille)
+```
+
+```{r, var qualitative gravite}
+table(prostate$lymph,prostate$gravite)
+chisq.test(prostate$lymph,prostate$gravite)
+```
+
+**5) ** Que concluez-vous ?
+Les variables `taille` et `radio` semblent très liées à `lymph`. Ce n’est pas le cas pour la variable `gravite`.
+
+## Modèle logistique
+
+**Apprendre un modèle logistique**
+
+Apprendre un modèle avec la fonction glm() en utilisant l'ensemble des variables disponibles (2 quantitatives et 3 qualitatives).
+```{r}
+fit_logistic = glm(lymph ~ age + log(acid) + radio + gravite + taille, family = "binomial" ,data = prostate)
+```
+
+Analyser le résulat avec la fonction summary().
+
+```{r}
+summary(fit_logistic)
+```
+
+
+N.B. : La fonction summary() donne notamment les p-values des tests de Wald univariés sur les coefficients (H0 : $beta_j$ = 0). 
+
+**6) ** Quel commentaire pouvez-vous faire ?
+On retrouve sur les p-values des tests de Wald univariés les liens ou les absences de lien observés précédemment.
+
+**7) ** Le modèle vous semble-t-il pertinent ? Avez-vous des propositions pour améliorer ce modèle  ?
+
+
+## Prédictions, matrice de confusion
+
+**Prédictions**
+
+**8) **  Utiliser la fonction predict pour renvoyer, pour tous les individus, la valeur de probabilité prédite avec le modèle 'fit_logistic' appris ci-dessus.
+
+```{r}
+?predict.glm
+predictions = predict(fit_logistic,type = "response")
+```
+
+
+**9) ** Renvoyer ensuite les étiquettes prédites par le classifieur 
+```{r}
+#on choisit un seuil souvent utiliser : 1/2
+seuil=1/2
+predictions_01 = predictions > seuil
+```
+
+**Matrice de confusion**
+
+**10) ** Donner la matrice de confusion
+
+```{r}
+table(as.numeric(predictions_01),prostate$lymph)
+```
+
+**11) ** Quel est le taux de faux positifs ? faux négatifs ? 
+Il y a 3/33 faux positifs et 6/20 faux négatifs.
+
+
+
+**12) ** Faire varier le seuil utilisé pour la prédiction. Expliquer le comportement de la matrice de confusion en fontion de ce seuil. Au tout début, quand seuil = 0, l'algo prédit tout le monde en positifs. Au fur et à mesure que le seuil augmente, l'algo va prédire des 0 : au début c'est plutôt des TP mais ensuite, plus le seuil augmente, plus je vais avoir des FN. QUand seuil = 1 : on prédit que des Négatifs.
+```{r}
+
+seuils = seq(0, 1, length.out = 9)
+for(i in 1:length(seuils)){
+seuil=seuils[i]
+predictions_01 = predictions > seuil
+print(table(as.numeric(predictions_01),prostate$lymph))
+}
+```
+
+## Courbe ROC et AUC
+
+```{r}
+#install.packages("ROCR")
+library(ROCR)
+```
+
+**13)** Tracer la courbe ROC et calculer l'AUC. Vous pourrez vous aider de l'exemple donné sur [ce site](http://www.duclert.org/r-apprentissage/courbes-ROC-R.php). 
+
+```{r}
+pred = prediction( predictions , prostate$lymph )
+perf = performance( pred, "tpr" ,"fpr" )
+plot( perf )
+
+ROC_auc = performance( pred,"auc")
+AUC = ROC_auc@y.values[[1]]
+print(AUC)
+```
