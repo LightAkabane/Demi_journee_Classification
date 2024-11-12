@@ -393,10 +393,11 @@ FodyWeavers.xsd
 *.msix
 *.msm
 *.msp
+*.RHistory
 
 # JetBrains Rider
 *.sln.iml
-.DS_Store
+*.DS_Store
 .eggs
 
 #FasterRCNN-PyTorch
